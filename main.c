@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <SDL/SDL.h>
+#include <SDL/SDL_rotozoom.h>
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -31,7 +32,7 @@ init ()
       return 0;
     }
 
-  SDL_WM_SetCaption ("Window Event Test", NULL);
+  SDL_WM_SetCaption ("Plotter: SDL output", NULL);
 
   return 1;
 }
@@ -57,18 +58,24 @@ redraw ()
 static void
 handle_events ()
 {
+  SDL_Surface *resized;
+
   if (event.type == SDL_VIDEORESIZE)
     {
+      resized =
+	zoomSurface (screen, (double) event.resize.w / screen->w,
+		     (double) event.resize.h / screen->h, SMOOTHING_ON);
+      if (resized == NULL)
+	return;
+
       screen =
 	SDL_SetVideoMode (event.resize.w, event.resize.h, SCREEN_BPP,
 			  SDL_HWSURFACE | SDL_RESIZABLE);
 
       if (screen == NULL)
-	{
-	  return;
-	}
+	return;
 
-      redraw ();
+      SDL_BlitSurface (resized, NULL, screen, NULL);
     }
   else if (event.type == SDL_VIDEOEXPOSE)
     {
@@ -85,8 +92,11 @@ static void
 feed (double value)
 {
   uint8_t *pixels = (uint8_t *) screen->pixels;
-  memmove (pixels + screen->pitch, pixels, screen->pitch * (screen->h - 1));
-  memset (pixels, 0x00, screen->pitch);
+  SDL_Rect src = {.x = 0,.y = 0,.w = screen->w,.h = screen->h - 1 };
+  SDL_Rect dst = {.x = 0,.y = 1,.w = screen->w,.h = screen->h - 1 };
+  SDL_Rect line = {.x = 0,.y = 0,.w = screen->w,.h = 1 };
+  SDL_BlitSurface (screen, &src, screen, &dst);
+  SDL_FillRect (screen, &line, 0);
   if (value >= 0.0 && value < 1.0)
     {
       pixels[(int) (screen->pitch * value) + 0] = 0xFF;
@@ -166,10 +176,8 @@ main ()
 
   signal (SIGINT, inthandler);
 
-  if (init () == 0)
-    {
-      return 1;
-    }
+  if (!init ())
+    return 1;
 
   while (quit <= 1)
     {
@@ -182,20 +190,14 @@ main ()
 
 	  if ((event.type == SDL_KEYDOWN)
 	      && (event.key.keysym.sym == SDLK_ESCAPE))
-	    {
-	      quit = 2;
-	    }
+	    quit = 2;
 
 	  if (event.type == SDL_QUIT)
-	    {
-	      quit = 2;
-	    }
+	    quit = 2;
 	}
 
       if (quit == 1)
-	{
-	  usleep (100000);
-	}
+	usleep (100000);
       else
 	switch (pselect (1, &fds, NULL, &efds, &timeout, NULL))
 	  {
@@ -216,7 +218,8 @@ main ()
 
 	    if (SDL_Flip (screen) == -1)
 	      {
-		return 1;
+		perror ("SDL_Flip");
+		abort ();
 	      }
 	    break;
 	  }
