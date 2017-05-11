@@ -1,12 +1,12 @@
-#include <sys/types.h>
-#include <sys/select.h>
-#include <unistd.h>
 #include <errno.h>
-#include <string.h>
-#include <stdlib.h>
-#include <signal.h>
 #include <SDL/SDL.h>
 #include <SDL/SDL_rotozoom.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
@@ -39,25 +39,7 @@ init ()
   return 1;
 }
 
-static void
-redraw ()
-{
-  int x, y;
-  SDL_LockSurface (screen);
-  uint8_t *pixels = (uint8_t *) screen->pixels;
-  for (y = 0; y < screen->h; y++)
-    for (x = 0; x < screen->w; x++)
-      {
-	pixels[y * screen->pitch + x * 4 + 0] = x & 0xFF;
-	pixels[y * screen->pitch + x * 4 + 1] = y & 0xFF;
-	pixels[y * screen->pitch + x * 4 + 2] = (x ^ y) & 0xFF;
-	pixels[y * screen->pitch + x * 4 + 3] = 0xFF;
-      }
-
-  SDL_UnlockSurface (screen);
-}
-
-static void
+static int
 handle_events ()
 {
   SDL_Surface *resized;
@@ -68,14 +50,20 @@ handle_events ()
 	zoomSurface (screen, (double) event.resize.w / screen->w,
 		     (double) event.resize.h / screen->h, SMOOTHING_ON);
       if (resized == NULL)
-	return;
+	{
+	  abort ();
+	  return 2;
+	}
 
       screen =
 	SDL_SetVideoMode (event.resize.w, event.resize.h, SCREEN_BPP,
 			  SDL_HWSURFACE | SDL_RESIZABLE);
 
       if (screen == NULL)
-	return;
+	{
+	  abort ();
+	  return 2;
+	}
 
       SDL_BlitSurface (resized, NULL, screen, NULL);
       SDL_FreeSurface (resized);
@@ -83,12 +71,18 @@ handle_events ()
   else if (event.type == SDL_VIDEOEXPOSE)
     {
       puts ("Exposure!");
-      redraw ();
       if (SDL_Flip (screen) == -1)
 	{
-	  return;
+	  abort ();
+	  return 2;
 	}
     }
+  else if (event.type == SDL_QUIT)
+    {
+      return 2;
+    }
+
+  return 0;
 }
 
 static void
@@ -134,10 +128,10 @@ feed (double value)
       SDL_FreeSurface (resized);
     }
   value = (value - min) / (max - min);
-  pixels[((int) (screen->pitch * value)) + 0] = 0xFF;
-  pixels[((int) (screen->pitch * value)) + 1] = 0xFF;
-  pixels[((int) (screen->pitch * value)) + 2] = 0xFF;
-  pixels[((int) (screen->pitch * value)) + 3] = 0xFF;
+  pixels[(((int) (screen->pitch * value)) & ~3) + 0] = 0xFF;
+  pixels[(((int) (screen->pitch * value)) & ~3) + 1] = 0xFF;
+  pixels[(((int) (screen->pitch * value)) & ~3) + 2] = 0xFF;
+  pixels[(((int) (screen->pitch * value)) & ~3) + 3] = 0xFF;
 }
 
 static int
@@ -223,16 +217,9 @@ main ()
       FD_ZERO (&fds);
       FD_ZERO (&efds);
       FD_SET (0, &fds);
-      while (SDL_PollEvent (&event))
+      while (quit <= 1 && SDL_PollEvent (&event))
 	{
-	  handle_events ();
-
-	  if ((event.type == SDL_KEYDOWN)
-	      && (event.key.keysym.sym == SDLK_ESCAPE))
-	    quit = 2;
-
-	  if (event.type == SDL_QUIT)
-	    quit = 2;
+	  quit |= handle_events ();
 	}
 
       if (quit == 1)
@@ -253,7 +240,7 @@ main ()
 	    if (FD_ISSET (0, &efds))
 	      quit = 1;
 	    else
-	      quit = process_input ();
+	      quit |= process_input ();
 
 	    if (SDL_Flip (screen) == -1)
 	      {
