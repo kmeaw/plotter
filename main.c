@@ -170,8 +170,10 @@ process_input ()
   int n;
 
   n = read (0, wbuf, sizeof (buf) - (wbuf - buf));
-  if (n <= 0)
+  if (n < 0)
     return 1;
+  else if (n == 0)
+    wbuf[0] = 0;
   n += wbuf - buf;
   for (rbuf = buf; n > 0;)
     {
@@ -242,14 +244,14 @@ font (int x, int y, const char *text)
 }
 
 int
-main ()
+main (int argc, char **argv)
 {
   fd_set fds;
   fd_set efds;
   struct timespec timeout = {.tv_sec = 1 };
   int x, y;
   uint32_t *src, *dst;
-  char txtbuf[16];
+  char txtbuf[64];
 
   signal (SIGINT, inthandler);
 
@@ -268,6 +270,19 @@ main ()
 
       if (quit == 1)
 	usleep (100000);
+      else if (argc == 2)
+      {
+	if (!freopen(argv[1], "r", stdin))
+	{
+	  perror("fopen");
+	  abort();
+	}
+
+	fgets(txtbuf, sizeof(txtbuf), stdin);
+	feed (strtod (txtbuf, NULL));
+
+	sleep (1);
+      }
       else
 	switch (pselect (1, &fds, NULL, &efds, &timeout, NULL))
 	  {
@@ -285,6 +300,8 @@ main ()
 	      quit = 1;
 	    else
 	      quit |= process_input ();
+	    break;
+	  }
 
 	    SDL_LockSurface (screen);
 	    src = (uint32_t *) target->pixels;
@@ -303,8 +320,6 @@ main ()
 		perror ("SDL_Flip");
 		abort ();
 	      }
-	    break;
-	  }
     }
 
   SDL_Quit ();
