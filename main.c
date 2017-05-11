@@ -134,10 +134,10 @@ feed (double value)
       SDL_FreeSurface (resized);
     }
   value = (value - min) / (max - min);
-  pixels[(int) (screen->pitch * value) + 0] = 0xFF;
-  pixels[(int) (screen->pitch * value) + 1] = 0xFF;
-  pixels[(int) (screen->pitch * value) + 2] = 0xFF;
-  pixels[(int) (screen->pitch * value) + 3] = 0xFF;
+  pixels[((int) (screen->pitch * value)) + 0] = 0xFF;
+  pixels[((int) (screen->pitch * value)) + 1] = 0xFF;
+  pixels[((int) (screen->pitch * value)) + 2] = 0xFF;
+  pixels[((int) (screen->pitch * value)) + 3] = 0xFF;
 }
 
 static int
