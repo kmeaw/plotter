@@ -5,14 +5,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
-#include "SDL/SDL.h"
+#include <SDL/SDL.h>
 
 const int SCREEN_WIDTH = 640;
 const int SCREEN_HEIGHT = 480;
 const int SCREEN_BPP = 32;
 
 SDL_Surface *screen = NULL;
-
 SDL_Event event;
 
 static int
@@ -86,15 +85,13 @@ static void
 feed (double value)
 {
   uint8_t *pixels = (uint8_t *) screen->pixels;
-  memset (pixels, 0xFF, screen->pitch);
   memmove (pixels + screen->pitch, pixels, screen->pitch * (screen->h - 1));
+  memset (pixels, 0x00, screen->pitch);
   if (value >= 0.0 && value < 1.0)
     {
-      fprintf (stderr, "debug: %f %d\n", value,
-	       (int) (screen->pitch * value) + 0);
-      pixels[(int) (screen->pitch * value) + 0] = 0;
-      pixels[(int) (screen->pitch * value) + 1] = 0;
-      pixels[(int) (screen->pitch * value) + 2] = 0;
+      pixels[(int) (screen->pitch * value) + 0] = 0xFF;
+      pixels[(int) (screen->pitch * value) + 1] = 0xFF;
+      pixels[(int) (screen->pitch * value) + 2] = 0xFF;
       pixels[(int) (screen->pitch * value) + 3] = 0xFF;
     }
 }
@@ -161,7 +158,7 @@ inthandler (int __attribute__ ((unused)) sig)
 }
 
 int
-main (int argc, char *args[])
+main ()
 {
   fd_set fds;
   fd_set efds;
@@ -200,7 +197,6 @@ main (int argc, char *args[])
 	  usleep (100000);
 	}
       else
-
 	switch (pselect (1, &fds, NULL, &efds, &timeout, NULL))
 	  {
 	  case -1:
