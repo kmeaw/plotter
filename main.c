@@ -13,6 +13,7 @@ const int SCREEN_HEIGHT = 480;
 const int SCREEN_BPP = 32;
 
 SDL_Surface *screen = NULL;
+SDL_Surface *target = NULL;
 SDL_Event event;
 
 double min = 0.0, max = 1.0;
@@ -21,18 +22,23 @@ static int
 init ()
 {
   if (SDL_Init (SDL_INIT_EVERYTHING) == -1)
-    {
-      return 0;
-    }
+    return 0;
 
   screen =
     SDL_SetVideoMode (SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_BPP,
 		      SDL_SWSURFACE | SDL_RESIZABLE);
 
   if (screen == NULL)
-    {
-      return 0;
-    }
+    return 0;
+
+  target =
+    SDL_CreateRGBSurface (SDL_SWSURFACE, SCREEN_HEIGHT, SCREEN_WIDTH,
+			  SCREEN_BPP, screen->format->Rmask,
+			  screen->format->Gmask, screen->format->Bmask,
+			  screen->format->Amask);
+
+  if (target == NULL)
+    return 0;
 
   SDL_WM_SetCaption ("Plotter: SDL output", NULL);
 
@@ -47,8 +53,8 @@ handle_events ()
   if (event.type == SDL_VIDEORESIZE)
     {
       resized =
-	zoomSurface (screen, (double) event.resize.w / screen->w,
-		     (double) event.resize.h / screen->h, SMOOTHING_ON);
+	zoomSurface (target, (double) event.resize.h / target->w,
+		     (double) event.resize.w / target->h, SMOOTHING_ON);
       if (resized == NULL)
 	{
 	  abort ();
@@ -65,8 +71,8 @@ handle_events ()
 	  return 2;
 	}
 
-      SDL_BlitSurface (resized, NULL, screen, NULL);
-      SDL_FreeSurface (resized);
+      SDL_FreeSurface (target);
+      target = resized;
     }
   else if (event.type == SDL_VIDEOEXPOSE)
     {
@@ -88,21 +94,21 @@ handle_events ()
 static void
 feed (double value)
 {
-  uint8_t *pixels = (uint8_t *) screen->pixels;
-  SDL_Rect src = {.x = 0,.y = 0,.w = screen->w,.h = screen->h - 1 };
-  SDL_Rect dst = {.x = 0,.y = 1,.w = screen->w,.h = screen->h - 1 };
-  SDL_Rect line = {.x = 0,.y = 0,.w = screen->w,.h = 1 };
-  double eps = (max - min) / screen->w;
+  uint8_t *pixels = (uint8_t *) target->pixels;
+  SDL_Rect src = {.x = 0,.y = 0,.w = target->w,.h = target->h - 1 };
+  SDL_Rect dst = {.x = 0,.y = 1,.w = target->w,.h = target->h - 1 };
+  SDL_Rect line = {.x = 0,.y = 0,.w = target->w,.h = 1 };
+  double eps = (max - min) / target->w;
 
-  SDL_BlitSurface (screen, &src, screen, &dst);
-  SDL_FillRect (screen, &line, 0);
+  SDL_BlitSurface (target, &src, target, &dst);
+  SDL_FillRect (target, &line, 0);
   if (value < min || value >= max)
     {
       double w0 = max - min;
       double w1 = w0;
       double x = 0.0;
       SDL_Surface *resized;
-      SDL_Rect zdst = {.x = 0,.y = 0,.w = screen->w,.h = screen->h };
+      SDL_Rect zdst = {.x = 0,.y = 0,.w = target->w,.h = target->h };
 
       if (value < min)
 	{
@@ -116,22 +122,22 @@ feed (double value)
 	  max = value + eps;
 	}
 
-      zdst.w = (w0 / w1) * screen->w;
+      zdst.w = (w0 / w1) * target->w;
       zdst.x = x;
 
-      resized = zoomSurface (screen, w0 / w1, 1.0, SMOOTHING_ON);
+      resized = zoomSurface (target, w0 / w1, 1.0, SMOOTHING_ON);
       if (!resized)
 	return;
 
-      SDL_FillRect (screen, NULL, 0);
-      SDL_BlitSurface (resized, NULL, screen, &zdst);
+      SDL_FillRect (target, NULL, 0);
+      SDL_BlitSurface (resized, NULL, target, &zdst);
       SDL_FreeSurface (resized);
     }
   value = (value - min) / (max - min);
-  pixels[(((int) (screen->pitch * value)) & ~3) + 0] = 0xFF;
-  pixels[(((int) (screen->pitch * value)) & ~3) + 1] = 0xFF;
-  pixels[(((int) (screen->pitch * value)) & ~3) + 2] = 0xFF;
-  pixels[(((int) (screen->pitch * value)) & ~3) + 3] = 0xFF;
+  pixels[(((int) (target->pitch * value)) & ~3) + 0] = 0xFF;
+  pixels[(((int) (target->pitch * value)) & ~3) + 1] = 0xFF;
+  pixels[(((int) (target->pitch * value)) & ~3) + 2] = 0xFF;
+  pixels[(((int) (target->pitch * value)) & ~3) + 3] = 0xFF;
 }
 
 static int
@@ -206,6 +212,8 @@ main ()
   fd_set fds;
   fd_set efds;
   struct timespec timeout = {.tv_sec = 1 };
+  int x, y;
+  uint32_t *src, *dst;
 
   signal (SIGINT, inthandler);
 
@@ -242,6 +250,14 @@ main ()
 	    else
 	      quit |= process_input ();
 
+	    SDL_LockSurface (screen);
+	    src = (uint32_t *) target->pixels;
+	    dst = (uint32_t *) screen->pixels;
+	    for (x = 0; x < screen->w; x++)
+	      for (y = 0; y < screen->h; y++)
+		dst[screen->pitch / 4 * (y + 1) - x - 1] =
+		  src[target->pitch / 4 * (x + 1) - y - 1];
+	    SDL_UnlockSurface (screen);
 	    if (SDL_Flip (screen) == -1)
 	      {
 		perror ("SDL_Flip");
