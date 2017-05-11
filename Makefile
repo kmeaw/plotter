@@ -9,4 +9,4 @@ clean:
 	rm -f main main.o
 
 run: main
-	od /dev/urandom | sed -e 's/[0-9]* \?/0.&\n/g' | ./main
+	od -An -w2 /dev/urandom | ./main

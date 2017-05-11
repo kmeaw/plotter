@@ -15,6 +15,8 @@ const int SCREEN_BPP = 32;
 SDL_Surface *screen = NULL;
 SDL_Event event;
 
+double min = 0.0, max = 1.0;
+
 static int
 init ()
 {
@@ -76,6 +78,7 @@ handle_events ()
 	return;
 
       SDL_BlitSurface (resized, NULL, screen, NULL);
+      SDL_FreeSurface (resized);
     }
   else if (event.type == SDL_VIDEOEXPOSE)
     {
@@ -95,15 +98,46 @@ feed (double value)
   SDL_Rect src = {.x = 0,.y = 0,.w = screen->w,.h = screen->h - 1 };
   SDL_Rect dst = {.x = 0,.y = 1,.w = screen->w,.h = screen->h - 1 };
   SDL_Rect line = {.x = 0,.y = 0,.w = screen->w,.h = 1 };
+  double eps = (max - min) / screen->w;
+
   SDL_BlitSurface (screen, &src, screen, &dst);
   SDL_FillRect (screen, &line, 0);
-  if (value >= 0.0 && value < 1.0)
+  if (value < min || value >= max)
     {
-      pixels[(int) (screen->pitch * value) + 0] = 0xFF;
-      pixels[(int) (screen->pitch * value) + 1] = 0xFF;
-      pixels[(int) (screen->pitch * value) + 2] = 0xFF;
-      pixels[(int) (screen->pitch * value) + 3] = 0xFF;
+      double w0 = max - min;
+      double w1 = w0;
+      double x = 0.0;
+      SDL_Surface *resized;
+      SDL_Rect zdst = {.x = 0,.y = 0,.w = screen->w,.h = screen->h };
+
+      if (value < min)
+	{
+	  x = min - value;
+	  w1 += min - value;
+	  min = value;
+	}
+      if (value >= max)
+	{
+	  w1 += value - max + eps;
+	  max = value + eps;
+	}
+
+      zdst.w = (w0 / w1) * screen->w;
+      zdst.x = x;
+
+      resized = zoomSurface (screen, w0 / w1, 1.0, SMOOTHING_ON);
+      if (!resized)
+	return;
+
+      SDL_FillRect (screen, NULL, 0);
+      SDL_BlitSurface (resized, NULL, screen, &zdst);
+      SDL_FreeSurface (resized);
     }
+  value = (value - min) / (max - min);
+  pixels[(int) (screen->pitch * value) + 0] = 0xFF;
+  pixels[(int) (screen->pitch * value) + 1] = 0xFF;
+  pixels[(int) (screen->pitch * value) + 2] = 0xFF;
+  pixels[(int) (screen->pitch * value) + 3] = 0xFF;
 }
 
 static int
@@ -124,6 +158,11 @@ process_input ()
   n += wbuf - buf;
   for (rbuf = buf; n > 0;)
     {
+      while (rbuf[0] == ' ' && n > 0)
+	{
+	  rbuf++;
+	  n--;
+	}
       lf = memchr (rbuf, '\n', n);
       if (!lf)
 	{
